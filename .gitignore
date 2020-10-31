@@ -1,0 +1,7 @@
+# Cache files
+__pycache__/
+
+# Project files
+.idea/
+*.log
+.env
