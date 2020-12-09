@@ -3,5 +3,6 @@ __pycache__/
 
 # Project files
 .idea/
+.vscode/
 *.log
 .env

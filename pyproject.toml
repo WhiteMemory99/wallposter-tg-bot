@@ -4,13 +4,11 @@ version = "1.0.0"
 description = "Telegram bot for wallpaper channels"
 authors = ["Daniil Kovalenko <lisen1510@gmail.com>"]
 license = "MIT"
-packages = [
-    { include = "app" },
-]
+packages = [{ include = "app" }]
 
 [tool.poetry.dependencies]
 python = "^3.7"
-aiogram = "^2.10.1"
+aiogram = "^2.11.2"
 envparse = "^0.2.0"
 APScheduler = "^3.6.3"
 pytz = "^2020.1"
