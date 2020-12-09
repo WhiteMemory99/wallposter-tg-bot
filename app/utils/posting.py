@@ -105,6 +105,10 @@ def resize_image(path: str) -> str:
 
     img = Image.open(path)
     img.thumbnail((1280, 1280), Image.ANTIALIAS)
-    img.save(new_path, 'JPEG')
+    
+    try:
+        img.save(new_path, 'JPEG')
+    except OSError:
+        img.save(new_path, 'PNG')
 
     return new_path
