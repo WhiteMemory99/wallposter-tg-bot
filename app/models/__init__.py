@@ -1,6 +1,8 @@
 from app.models.base import db
-from app.models.wallpaper import Wallpaper
+from app.models.channel import Channel
+from app.models.link import Link
 from app.models.user import User
+from app.models.wallpaper import Wallpaper
 
 
 async def setup(database_path: str):
@@ -13,8 +15,4 @@ async def shutdown():
         await bind.close()
 
 
-__all__ = (
-    'db',
-    'User',
-    'Wallpaper'
-)
+__all__ = ("db", "User", "Channel", "Wallpaper", "Link")

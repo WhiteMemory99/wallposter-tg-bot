@@ -1,7 +1,11 @@
 from aiogram import Dispatcher
+from aiogram.contrib.middlewares.logging import LoggingMiddleware
 
-from app.middlewares.acl import ACLMiddleware
+from app.middlewares.database import DBMiddleware
 
 
-def setup(dispatcher: Dispatcher):
-    dispatcher.middleware.setup(ACLMiddleware())
+def setup(dispatcher: Dispatcher, debug: bool = False):
+    dispatcher.middleware.setup(DBMiddleware())
+
+    if debug:
+        dispatcher.middleware.setup(LoggingMiddleware())

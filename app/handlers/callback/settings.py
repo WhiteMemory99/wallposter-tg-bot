@@ -2,104 +2,98 @@ from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.models import User
-from app.services import apscheduler
+from app.models import Channel, Link
+from app.services.scheduler import BASE_JOB_ID, apscheduler
 from app.utils import helper, posting
+from app.utils.callback_data import interval_cd
 from app.utils.states import Inputs
 
 
-async def settings_switchers(call: types.CallbackQuery, user: User):
-    if call.data == 'counter_switch':
-        await user.update(enable_counter=not user.enable_counter).apply()
-    elif call.data == 'title_switch':
-        await user.update(enable_sign=not user.enable_sign).apply()
+async def settings_switchers(query: types.CallbackQuery, link: Link):  # TODO: Validate Channel ID is equal
+    channel = await Channel.get(link.channel_id)
+    if query.data == "switch_counter":
+        await channel.update(enable_counter=not channel.enable_counter).apply()
+    elif query.data == "switch_signature":
+        await channel.update(enable_signature=not channel.enable_signature).apply()
     else:
-        job_id = f'posting_{call.from_user.id}'
+        job_id = BASE_JOB_ID.format(channel_id=channel.id, user_id=query.from_user.id)
         job = apscheduler.get_job(job_id)
         if job is None:
             apscheduler.add_job(
                 posting.post_wallpaper,
                 id=job_id,
-                trigger='cron',
-                minute='0',
-                hour=f'*/{user.scheduler_hours}',
-                args=(call.from_user.id,),
-                replace_existing=True
+                trigger="cron",
+                minute="0",
+                hour=f"*/{channel.scheduler_hours}",
+                args=(channel.id, query.from_user.id),
+                replace_existing=True,
             )
         else:
             job.remove()
 
-    _, markup = helper.get_settings_data(user)
-    await call.message.edit_reply_markup(markup)
-    await call.answer()
+    markup = helper.get_settings_markup(channel, query.from_user.id)
+    await query.message.edit_reply_markup(markup)
+    await query.answer()
 
 
-async def edit_settings_options(call: types.CallbackQuery, state: FSMContext):
-    markup = InlineKeyboardMarkup(row_width=1)
-    if call.data == 'title_edit':
+async def edit_settings_values(query: types.CallbackQuery):
+    markup = InlineKeyboardMarkup(row_width=2)
+    if query.data == "edit_signature":
         markup.add(
-            InlineKeyboardButton('По-умолчанию', callback_data='title_reset'),
-            InlineKeyboardButton('Назад', callback_data='settings')
+            InlineKeyboardButton("По-умолчанию", callback_data="reset_signature"),
+            InlineKeyboardButton("Отмена", callback_data="open_settings"),
         )
-        await call.message.edit_text(
-            'Введите новый текст, который будет под каждой публикацией.'
-            '\n<code>{sign}</code> - Актуальная подпись с именем канала.',
-            reply_markup=markup
+        await query.message.edit_text(
+            "Отправьте новую подпись, она будет под каждой публикацией."
+            "\n<code>{title}</code> - Актуальное название канала в ссылке, оно же стоит по-умолчанию.",
+            reply_markup=markup,
         )
 
-        await Inputs.edit_sign.set()
-        await state.update_data(message_id=call.message.message_id)
-    elif call.data == 'counter_edit':
-        markup.add(InlineKeyboardButton('Назад', callback_data='settings'))
-        await call.message.edit_text(
-            'Введите отправное значение счётчика <b>от 0 до 1000000</b>.\nОн отвечает за нумерацию файлов в названии.',
-            reply_markup=markup
+        await Inputs.edit_signature.set()
+    elif query.data == "edit_counter":
+        markup.add(InlineKeyboardButton("Отмена", callback_data="open_settings"))
+        await query.message.edit_text(
+            "Отправьте значение счётчика от <b>0</b> до <b>100000000</b>.\n"
+            "Он служит основой для нумерации файлов в названии.",
+            reply_markup=markup,
         )
 
         await Inputs.edit_counter.set()
-        await state.update_data(message_id=call.message.message_id)
     else:
-        markup = InlineKeyboardMarkup(row_width=2)
-        markup.add(
-            InlineKeyboardButton('Раз в 1 час', callback_data='interval_1'),
-            InlineKeyboardButton('Раз в 3 часа', callback_data='interval_3'),
-            InlineKeyboardButton('Раз в 6 часов', callback_data='interval_6'),
-            InlineKeyboardButton('Раз в 9 часов', callback_data='interval_9'),
-            InlineKeyboardButton('Раз в 12 часов', callback_data='interval_12')
-        )
-        await call.message.edit_reply_markup(markup)
+        for interval in range(0, 25, 3):
+            if not interval:
+                interval += 1
 
-    await call.answer()
+            word = helper.make_agree_with_number(interval, ("час", "часа", "часов"))
+            markup.insert(
+                InlineKeyboardButton(f"Раз в {interval} {word}", callback_data=interval_cd.new(hours=interval))
+            )
 
+        await query.message.edit_reply_markup(markup)
 
-async def reset_sign(call: types.CallbackQuery, user: User, state: FSMContext):
-    await state.reset_state()
-    await user.update(sign_text=None).apply()
-
-    text, markup = helper.get_settings_data(user)
-    await call.message.edit_text(text, reply_markup=markup)
-    await call.answer('Подпись сброшена.')
+    await query.answer()
 
 
-async def edit_scheduler_interval(call: types.CallbackQuery, user: User):
-    hours = int(call.data.split('_')[1])
-    await user.update(scheduler_hours=hours).apply()
-    job = apscheduler.get_job(f'posting_{call.from_user.id}')
+async def reset_signature(query: types.CallbackQuery, state: FSMContext, link: Link):
+    await state.finish()
+    await Channel.update.values(signature_text=None).where(Channel.id == link.channel_id).gino.status()
+
+    chat = await query.bot.get_chat(link.channel_id)
+    text, markup = await helper.get_settings_data(chat, link.channel_id, query.from_user.id)
+    await query.message.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
+
+    await query.answer("Подпись сброшена к стандартному значению.")
+
+
+async def edit_scheduler_interval(query: types.CallbackQuery, callback_data: dict, link: Link):
+    hours = int(callback_data["hours"])
+    await Channel.update.values(scheduler_hours=hours).where(Channel.id == link.channel_id).gino.status()
+
+    job = apscheduler.get_job(BASE_JOB_ID.format(channel_id=link.channel_id, user_id=query.from_user.id))
     if job is not None:
-        job.reschedule(
-            trigger='cron',
-            minute='0',
-            hour=f'*/{hours}'
-        )
+        job.reschedule(trigger="cron", minute="0", hour=f"*/{hours}")
 
-    text, markup = helper.get_settings_data(user)
-    await call.message.edit_text(text, reply_markup=markup)
-    await call.answer()
-
-
-async def show_settings_menu(call: types.CallbackQuery, user: User, state: FSMContext):
-    await state.reset_state()
-
-    text, markup = helper.get_settings_data(user)
-    await call.message.edit_text(text, reply_markup=markup)
-    await call.answer()
+    chat = await query.bot.get_chat(link.channel_id)
+    text, markup = await helper.get_settings_data(chat, link.channel_id, query.from_user.id)
+    await query.message.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
+    await query.answer()

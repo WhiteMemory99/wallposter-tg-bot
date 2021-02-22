@@ -1,69 +1,88 @@
-import os
-import tempfile
+from io import BytesIO
 from typing import Optional
 
 import httpx
 from aiogram import types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from gino.exceptions import NoSuchRowError
 
-from app.models import User, Wallpaper
-from app.utils.posting import resize_image
+from app.models import Link, Wallpaper
+from app.utils import helper
+from app.utils.callback_data import wallpaper_cd
 
 
-async def photo_receiver(message: types.Message, user: User):
-    if user.chat_id:
-        if 'image' in message.document.mime_type:
-            image = await Wallpaper.query.where(Wallpaper.unique_id == message.document.file_unique_id).gino.first()
-            if image is None:
-                if message.caption and len(message.caption) <= 100:
-                    sign_text = message.html_text
-                else:
-                    sign_text = None
+async def photo_receiver(message: types.Message, link: Link):
+    if not link.channel_id:
+        await message.answer("Для публикации обоев сначала подключите канал.")
+        return
 
-                image = await Wallpaper.create(
-                    file_id=message.document.file_id,
-                    unique_id=message.document.file_unique_id,
-                    user_id=message.from_user.id,
-                    extension=message.document.mime_type.split('/')[1],
-                    custom_sign=sign_text,
-                )
-                caption_text = f'\n\n<b>Кастомная подпись:</b>\n{sign_text}' if sign_text else ''
-                await message.reply(
-                    f'Картинка добавлена в очередь на публикацию.{caption_text}',
-                    reply_markup=get_control_keyboard(image.id)
-                )
+    if "image" in message.document.mime_type:
+        if message.document.file_size > 20000000:  # TODO: Local Bot API / Pyrogram
+            await message.answer("Размер этой картинки слишком большой для публикации через меня.")
+            return
 
-                # It takes some time so we upload a preview after the message was sent
-                telegraph_link = await upload_preview(message.document, message.from_user.id)
-                try:
-                    await image.update(telegraph_link=telegraph_link).apply()
-                except Exception:
-                    return
+        image = await Wallpaper.query.where(
+            Wallpaper.unique_file_id == message.document.file_unique_id and Wallpaper.channel_id == link.channel_id
+        ).gino.first()
+
+        chat = await message.bot.get_chat(link.channel_id)
+        chat_title = helper.get_chat_title(chat)
+        if image is None:
+            if message.caption and not message.is_forward():
+                custom_signature = message.html_text
             else:
-                await message.reply(
-                    'Эта картинка уже в очереди на публикацию.',
-                    reply_markup=get_control_keyboard(image.id)
-                )
+                custom_signature = None
+
+            image = await Wallpaper.create(
+                file_id=message.document.file_id,
+                unique_file_id=message.document.file_unique_id,
+                user_id=message.from_user.id,
+                channel_id=link.channel_id,
+                extension=message.document.mime_type.split("/")[1],
+                custom_signature=custom_signature,
+            )
+
+            caption_text = f"\n\n<b>Кастомная подпись:</b>\n{custom_signature}" if custom_signature else ""
+            await message.reply(
+                f"Файл добавлен в очередь на публикацию в <b>{chat_title}</b>.{caption_text}",
+                reply_markup=get_publishing_keyboard(image.id, link.channel_id),
+                disable_web_page_preview=True,
+            )
+
+            telegraph_link = await upload_telegraph_preview(message.document)
+            try:
+                await image.update(telegraph_link=telegraph_link).apply()
+            except NoSuchRowError:
+                return
         else:
-            await message.reply('Я принимаю только картинки и фотографии.')
+            await message.reply(
+                f"Эта картинка уже в очереди на публикацию в <b>{chat_title}</b>.",
+                reply_markup=get_publishing_keyboard(image.id, link.channel_id),
+                disable_web_page_preview=True,
+            )
     else:
-        await message.answer('Сначала добавьте свой канал, переслав из него сообщение.')
+        await message.reply("Я принимаю только документы с картинками.")
 
 
-def get_control_keyboard(wallpaper_id: int) -> InlineKeyboardMarkup:
+def get_publishing_keyboard(wallpaper_id: int, channel_id: int) -> InlineKeyboardMarkup:
     """
     Get a keyboard containing publishing options.
 
-    :param wallpaper_id: Database ID of the wallpaper
+    :param wallpaper_id: Database ID of a wallpaper
     :return:
     """
     return InlineKeyboardMarkup(row_width=1).add(
-        InlineKeyboardButton('Опубликовать сейчас', callback_data=f'publish_{wallpaper_id}'),
-        InlineKeyboardButton('Снять с очереди', callback_data=f'remove_{wallpaper_id}')
+        InlineKeyboardButton(
+            "Опубликовать сейчас",
+            callback_data=wallpaper_cd.new(wall_id=wallpaper_id, chat_id=channel_id, do="publish"),
+        ),
+        InlineKeyboardButton(
+            "Снять с очереди", callback_data=wallpaper_cd.new(wall_id=wallpaper_id, chat_id=channel_id, do="discard")
+        ),
     )
 
 
-async def upload_preview(document: types.Document, user_id: int) -> Optional[str]:
+async def upload_telegraph_preview(document: types.Document) -> Optional[str]:
     """
     Upload a wallpaper to Telegraph. This preview will be used in the queue list.
 
@@ -71,18 +90,15 @@ async def upload_preview(document: types.Document, user_id: int) -> Optional[str
     :param user_id: User ID
     :return: Returns a telegraph link on success
     """
-    with tempfile.TemporaryDirectory(prefix=str(user_id), suffix='upload') as tempdir:
-        full_path = await document.download(destination=os.path.join(tempdir, document.file_id))
-        preview_path = resize_image(full_path.name)
-
+    with await document.download(destination=BytesIO()) as image:
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
-                    'https://telegra.ph/upload',
-                    files={'upload-file': ('wallpaper_preview', open(preview_path, 'rb'), 'image/jpeg')}
+                    "https://telegra.ph/upload",
+                    files={"upload-file": ("wallpaper_preview", image, "image/png")},
                 )
                 result = response.json()
-                if 'error' in result:
+                if "error" in result:
                     return None
 
                 return f'https://telegra.ph{result[0]["src"]}'

@@ -1,35 +1,43 @@
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 
-from app.models import User
+from app.models import Channel, Link
 from app.utils import helper
 
+TEXT_LENGTH_LIMIT = 250
 
-async def new_title(message: types.Message, user: User, state: FSMContext):
-    if not message.text:
-        await message.answer('Введите текст до <b>100</b> символов.')
-    elif len(message.text) > 100:
-        await message.answer('Введите <b>до 100</b> символов.')
+
+async def edit_signature(message: types.Message, state: FSMContext, link: Link):
+    if not link.channel_id:
+        await message.answer("Подключённый канал был удалён из бота.")
+        await state.finish()
+    elif not message.text or len(message.text) > TEXT_LENGTH_LIMIT:
+        await message.answer(f"Введите текст до <b>{TEXT_LENGTH_LIMIT}</b> символов.")
     else:
-        data = await state.get_data()
-        await state.reset_state()
-        await user.update(sign_text=message.html_text).apply()
+        await state.finish()
+        await Channel.update.values(signature_text=message.html_text).where(
+            Channel.id == link.channel_id
+        ).gino.status()
 
-        text, markup = helper.get_settings_data(user)
-        await message.answer(text, reply_markup=markup)
-        await message.bot.edit_message_reply_markup(message.from_user.id, data['message_id'])
+        chat = await message.bot.get_chat(link.channel_id)
+        text, markup = await helper.get_settings_data(chat, link.channel_id, message.from_user.id)
+
+        await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
 
 
-async def new_counter(message: types.Message, user: User, state: FSMContext):
-    if not message.text or not message.text.isdigit():
-        await message.answer('Введите число <b>от 0 до 1000000</b>.')
-    elif int(message.text) not in range(0, 1000001):
-        await message.answer('Число должно быть <b>от 0 до 1000000</b>.')
+async def edit_counter_value(message: types.Message, state: FSMContext, link: Link):
+    error_text = "Введите число от <b>0</b> до <b>100000000</b>."
+    if not link.channel_id:
+        await message.answer("Подключённый канал был удалён из бота.")
+        await state.finish()
+    elif not message.text or not message.text.isdigit():
+        await message.answer(error_text)
+    elif int(message.text) not in range(0, 100000001):
+        await message.answer(error_text)
     else:
-        data = await state.get_data()
-        await state.reset_state()
-        await user.update(counter=int(message.text)).apply()
+        await state.finish()
+        await Channel.update.values(counter_value=int(message.text)).where(Channel.id == link.channel_id).gino.status()
+        chat = await message.bot.get_chat(link.channel_id)
+        text, markup = await helper.get_settings_data(chat, link.channel_id, message.from_user.id)
 
-        text, markup = helper.get_settings_data(user)
-        await message.answer(text, reply_markup=markup)
-        await message.bot.edit_message_reply_markup(message.from_user.id, data['message_id'])
+        await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
