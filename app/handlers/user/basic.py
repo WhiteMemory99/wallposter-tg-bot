@@ -1,7 +1,9 @@
 from aiogram import md, types
+from aiogram.types.inline_keyboard import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils import exceptions
 from asyncpg.exceptions import UniqueViolationError
 
+from app import config
 from app.models import Channel, Link
 from app.services.scheduler import BASE_JOB_ID, apscheduler
 from app.utils import helper, keyboard, posting
@@ -15,6 +17,12 @@ async def greeting(message: types.Message):
         " Я автоматически добавлю её в очередь публикации.\n"
         "<b>2.</b> Если захочешь сменить подключённый канал, просто перешли мне любое сообщение из нужного."
     )
+
+
+async def get_sources_link(message: types.Message):
+    me = await message.bot.me
+    markup = InlineKeyboardMarkup().row(InlineKeyboardButton("GitHub", url=config.GITHUB_LINK))
+    await message.answer(f"Исходный код <b>{me.first_name}</b> доступен по ссылке ниже.", reply_markup=markup)
 
 
 async def handle_channel_forward(message: types.Message, link: Link):

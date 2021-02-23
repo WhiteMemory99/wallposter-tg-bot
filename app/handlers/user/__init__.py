@@ -18,6 +18,8 @@ def setup(dispatcher: Dispatcher):
 
     dispatcher.register_message_handler(basic.greeting, commands=("start", "help"))
 
+    dispatcher.register_message_handler(basic.get_sources_link, commands="sources")
+
     dispatcher.register_message_handler(basic.status_command, commands="status")
 
     dispatcher.register_message_handler(basic.settings_command, commands="settings")

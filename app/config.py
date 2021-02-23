@@ -13,5 +13,5 @@ POSTGRES_PASSWORD = env.str("POSTGRES_PASSWORD")
 DB_NAME = env.str("DB_NAME")
 DB_URI = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}/{DB_NAME}"
 
-PREFIXES = "/!"  # Command prefixes
+GITHUB_LINK = "https://github.com/WhiteMemory99/wallposter-tg-bot"
 DEBUG = False  # True to enable DEBUG mode (More logs and polling)
