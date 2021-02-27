@@ -70,7 +70,11 @@ async def get_status_data(chat_obj: types.Chat, channel_id: int, user_id: int):
     :param user_id: User ID
     :return:
     """
-    queue_size = await db.select([db.func.count()]).where(Wallpaper.user_id == user_id).gino.scalar()
+    queue_size = (
+        await db.select([db.func.count()])
+        .where(Wallpaper.user_id == user_id and Wallpaper.channel_id == channel_id)
+        .gino.scalar()
+    )
     if queue_size > 0:
         markup = InlineKeyboardMarkup().add(InlineKeyboardButton("Обои в очереди", callback_data="queue_list"))
     else:
