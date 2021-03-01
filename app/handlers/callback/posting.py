@@ -2,6 +2,7 @@ from aiogram import types
 from aiogram.types import InputFile
 from aiogram.utils import exceptions
 from loguru import logger
+from sqlalchemy.sql import and_
 
 from app.models import Channel, Wallpaper, db
 from app.services.scheduler import BASE_JOB_ID, apscheduler
@@ -41,7 +42,7 @@ async def publish_now(query: types.CallbackQuery, callback_data: dict):
             ]
         )
         .select_from(Wallpaper.join(Channel))
-        .where(Wallpaper.channel_id == channel_id and Wallpaper.id == wallpaper_id)
+        .where(and_(Wallpaper.channel_id == channel_id, Wallpaper.id == wallpaper_id))
         .gino.first()
     )
     if image is not None:
@@ -52,7 +53,7 @@ async def publish_now(query: types.CallbackQuery, callback_data: dict):
                 await query.answer("Вы потеряли админку в канале.\nВсе публикации отменены.")
             finally:
                 await Wallpaper.delete.where(
-                    Wallpaper.user_id == query.from_user.id and Wallpaper.channel_id == channel_id
+                    and_(Wallpaper.user_id == query.from_user.id, Wallpaper.channel_id == channel_id)
                 ).gino.status()
                 if job is not None:
                     job.remove()

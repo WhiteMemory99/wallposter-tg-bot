@@ -5,6 +5,7 @@ import httpx
 from aiogram import types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from gino.exceptions import NoSuchRowError
+from sqlalchemy.sql import and_
 
 from app.models import Link, Wallpaper
 from app.utils import helper
@@ -22,7 +23,7 @@ async def photo_receiver(message: types.Message, link: Link):
             return
 
         image = await Wallpaper.query.where(
-            Wallpaper.unique_file_id == message.document.file_unique_id and Wallpaper.channel_id == link.channel_id
+            and_(Wallpaper.unique_file_id == message.document.file_unique_id, Wallpaper.channel_id == link.channel_id)
         ).gino.first()
 
         chat = await message.bot.get_chat(link.channel_id)

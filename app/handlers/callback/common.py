@@ -1,5 +1,6 @@
 from aiogram import types
 from aiogram.dispatcher import FSMContext
+from sqlalchemy.sql import and_
 
 from app.models import Channel, Link, Wallpaper
 from app.utils import helper
@@ -25,7 +26,9 @@ async def show_status_menu(query: types.CallbackQuery, link: Link):
 
 async def show_queue_list(query: types.CallbackQuery, link: Link):
     images = (
-        await Wallpaper.query.where(Wallpaper.user_id == query.from_user.id and Wallpaper.telegraph_link is not None)
+        await Wallpaper.query.where(
+            and_(Wallpaper.user_id == query.from_user.id, Wallpaper.telegraph_link is not None)
+        )
         .limit(100)
         .gino.all()
     )

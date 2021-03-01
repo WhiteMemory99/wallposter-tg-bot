@@ -7,6 +7,7 @@ from aiogram.types import InputFile
 from aiogram.utils import exceptions
 from loguru import logger
 from PIL import Image
+from sqlalchemy.sql import and_
 
 from app.models import Channel, Wallpaper, db
 from app.services.scheduler import BASE_JOB_ID, apscheduler
@@ -51,7 +52,7 @@ async def post_wallpaper(channel_id: int, user_id: int) -> None:
             ]
         )
         .select_from(Wallpaper.join(Channel))
-        .where(Wallpaper.channel_id == channel_id and Wallpaper.user_id == user_id)
+        .where(and_(Wallpaper.channel_id == channel_id, Wallpaper.user_id == user_id))
         .gino.first()
     )
     if queue_element is None:
@@ -70,7 +71,7 @@ async def post_wallpaper(channel_id: int, user_id: int) -> None:
             )
         finally:
             await Wallpaper.delete.where(
-                Wallpaper.user_id == data.user_id and Wallpaper.channel_id == data.channel_id
+                and_(Wallpaper.user_id == data.user_id, Wallpaper.channel_id == data.channel_id)
             ).gino.status()
             if job is not None:
                 job.remove()

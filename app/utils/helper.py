@@ -2,6 +2,7 @@ from typing import Tuple
 
 from aiogram import md, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy.sql import and_
 
 from app.models import Channel, Wallpaper, db
 from app.services.scheduler import BASE_JOB_ID, apscheduler
@@ -72,7 +73,7 @@ async def get_status_data(chat_obj: types.Chat, channel_id: int, user_id: int):
     """
     queue_size = (
         await db.select([db.func.count()])
-        .where(Wallpaper.user_id == user_id and Wallpaper.channel_id == channel_id)
+        .where(and_(Wallpaper.user_id == user_id, Wallpaper.channel_id == channel_id))
         .gino.scalar()
     )
     if queue_size > 0:
