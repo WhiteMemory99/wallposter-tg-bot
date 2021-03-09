@@ -84,7 +84,9 @@ async def post_wallpaper(channel_id: int, user_id: int) -> None:
                     channel_id, InputFile(full_image, filename=filename), disable_notification=True
                 )
 
-                await Channel.update.values(counter_value=data.counter_value + 1).gino.status()
+                await Channel.update.values(counter_value=data.counter_value + 1).where(
+                    Channel.id == data.channel_id
+                ).gino.status()
                 await Wallpaper.delete.where(Wallpaper.id == data.wallpaper_id).gino.status()
     except exceptions.TelegramAPIError as ex:
         logger.error("{ex} while publishing a wallpaper.", ex=ex)

@@ -68,7 +68,9 @@ async def publish_now(query: types.CallbackQuery, callback_data: dict):
                         image.channel_id, InputFile(full_image, filename=filename), disable_notification=True
                     )
 
-                    await Channel.update.values(counter_value=data.counter_value + 1).gino.status()
+                    await Channel.update.values(counter_value=data.counter_value + 1).where(
+                        Channel.id == data.channel_id
+                    ).gino.status()
                     await Wallpaper.delete.where(Wallpaper.id == wallpaper_id).gino.status()
 
             await query.answer("Файл успешно опубликован.")
